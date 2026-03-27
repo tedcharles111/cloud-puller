@@ -2,11 +2,14 @@ import fetch from 'node-fetch';
 import FormData from 'form-data';
 import fs from 'fs';
 import path from 'path';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 const { CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN } = process.env;
 
 if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
-  throw new Error('Missing Cloudflare credentials. Check .env file.');
+  throw new Error('Missing Cloudflare credentials. Check environment variables.');
 }
 
 /**
