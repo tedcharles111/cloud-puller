@@ -1,10 +1,9 @@
 import express from 'express';
-import multer from 'multer';
-import path from 'path';
 import { fileURLToPath } from 'url';
-import { deployToCloudflarePages } from './deploy.js';
-import dotenv from 'dotenv';
+import path from 'path';
 import fs from 'fs';
+import dotenv from 'dotenv';
+import { deployToCloudflarePages } from './deploy.js';
 
 dotenv.config();
 
@@ -14,13 +13,11 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Multer: accept zip files or a directory? For simplicity, we accept a folder path via JSON.
 app.use(express.json());
 
 /**
  * POST /deploy
  * Body: { "projectName": "my-app", "buildFolder": "/absolute/path/to/dist" }
- * Returns: { "url": "https://my-app.pages.dev", "deploymentId": "..." }
  */
 app.post('/deploy', async (req, res) => {
   try {
@@ -42,7 +39,6 @@ app.post('/deploy', async (req, res) => {
   }
 });
 
-// Simple homepage to test
 app.get('/', (req, res) => {
   res.send(`
     <h1>Cloudflare Pages Deployment Service</h1>
