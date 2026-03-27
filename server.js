@@ -12,8 +12,14 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const port = process.env.PORT || 3000;
+const host = '0.0.0.0';  // Required for Render to route traffic
 
 app.use(express.json());
+
+// Health check endpoint for Render – returns OK immediately
+app.get('/health', (req, res) => {
+  res.status(200).send('OK');
+});
 
 /**
  * POST /deploy
@@ -26,7 +32,6 @@ app.post('/deploy', async (req, res) => {
       return res.status(400).json({ error: 'projectName and buildFolder are required' });
     }
 
-    // Check if buildFolder exists
     if (!fs.existsSync(buildFolder)) {
       return res.status(400).json({ error: `Build folder does not exist: ${buildFolder}` });
     }
@@ -50,6 +55,10 @@ app.get('/', (req, res) => {
   `);
 });
 
-app.listen(port, () => {
-  console.log(`🚀 Server running on http://localhost:${port}`);
+const server = app.listen(port, host, () => {
+  console.log(`🚀 Server running on http://${host}:${port}`);
 });
+
+// Increase timeouts to prevent health check failures during cold starts
+server.keepAliveTimeout = 120000;   // 2 minutes
+server.headersTimeout = 120000;     // 2 minutes
