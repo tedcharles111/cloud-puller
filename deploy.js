@@ -8,6 +8,10 @@ dotenv.config();
 
 const { CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN } = process.env;
 
+// Debug: log first few characters (safe for logs)
+console.log('🔍 DEBUG: CLOUDFLARE_ACCOUNT_ID =', CLOUDFLARE_ACCOUNT_ID);
+console.log('🔍 DEBUG: CLOUDFLARE_API_TOKEN prefix =', CLOUDFLARE_API_TOKEN ? CLOUDFLARE_API_TOKEN.substring(0,15) : 'MISSING');
+
 if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
   throw new Error('Missing Cloudflare credentials. Check environment variables.');
 }
@@ -16,35 +20,31 @@ if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
  * Ensure a Cloudflare Pages project exists (create if missing)
  */
 async function ensureProject(projectName) {
-  // Check if project already exists
-  const listRes = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects`,
-    {
-      headers: { Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}` },
-    }
-  );
+  const url = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects`;
+  console.log(`🔍 Ensuring project: ${projectName}, URL: ${url}`);
+  
+  const listRes = await fetch(url, {
+    headers: { Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}` },
+  });
   const listData = await listRes.json();
   if (!listData.success) {
+    console.error('❌ Failed to list projects:', listData.errors);
     throw new Error(`Failed to list projects: ${JSON.stringify(listData.errors)}`);
   }
 
   const exists = listData.result.some(p => p.name === projectName);
   if (!exists) {
-    // Create a new project
-    const createRes = await fetch(
-      `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: projectName,
-          production_branch: 'main',
-        }),
-      }
-    );
+    const createRes = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: projectName,
+        production_branch: 'main',
+      }),
+    });
     const createData = await createRes.json();
     if (!createData.success) {
       throw new Error(`Failed to create project: ${JSON.stringify(createData.errors)}`);
@@ -84,38 +84,38 @@ async function collectFiles(dirPath, baseDir = dirPath) {
  * @returns {Promise<{url: string, deploymentId: string}>}
  */
 export async function deployToCloudflarePages(projectName, buildFolder) {
-  // 1. Make sure the project exists
+  console.log(`🚀 Starting deployment for ${projectName} from ${buildFolder}`);
   await ensureProject(projectName);
 
-  // 2. Collect all files
+  console.log('📦 Collecting files...');
   const files = await collectFiles(buildFolder);
+  console.log(`📁 Found ${files.size} files`);
 
-  // 3. Build multipart form data
   const form = new FormData();
   for (const [relativePath, content] of files.entries()) {
     form.append(relativePath, content, relativePath);
   }
 
-  // 4. Create a deployment
-  const deployRes = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${projectName}/deployments`,
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}`,
-        ...form.getHeaders(),
-      },
-      body: form,
-    }
-  );
+  const deployUrl = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${projectName}/deployments`;
+  console.log(`🚀 Posting to ${deployUrl}`);
+  
+  const deployRes = await fetch(deployUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}`,
+      ...form.getHeaders(),
+    },
+    body: form,
+  });
 
   const deployData = await deployRes.json();
   if (!deployData.success) {
+    console.error('❌ Deployment failed:', deployData.errors);
     throw new Error(`Deployment failed: ${JSON.stringify(deployData.errors)}`);
   }
 
   const deployment = deployData.result;
-  const url = deployment.url;      // e.g., https://my-user-app.pages.dev
+  const url = deployment.url;
   const deploymentId = deployment.id;
 
   console.log(`✅ Deployed ${projectName} → ${url}`);

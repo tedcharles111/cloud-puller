@@ -12,11 +12,23 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const port = process.env.PORT || 3000;
-const host = '0.0.0.0';  // Required for Render to route traffic
+const host = '0.0.0.0';
 
 app.use(express.json());
 
-// Health check endpoint for Render – returns OK immediately
+// Debug endpoint to check environment variables (remove later)
+app.get('/debug/env', (req, res) => {
+  res.json({
+    hasAccountId: !!process.env.CLOUDFLARE_ACCOUNT_ID,
+    accountIdPrefix: process.env.CLOUDFLARE_ACCOUNT_ID ? process.env.CLOUDFLARE_ACCOUNT_ID.substring(0,10) : null,
+    hasToken: !!process.env.CLOUDFLARE_API_TOKEN,
+    tokenPrefix: process.env.CLOUDFLARE_API_TOKEN ? process.env.CLOUDFLARE_API_TOKEN.substring(0,15) : null,
+    nodeEnv: process.env.NODE_ENV,
+    allCloudflareKeys: Object.keys(process.env).filter(k => k.includes('CLOUD') || k.includes('CF'))
+  });
+});
+
+// Health check endpoint for Render
 app.get('/health', (req, res) => {
   res.status(200).send('OK');
 });
@@ -59,6 +71,5 @@ const server = app.listen(port, host, () => {
   console.log(`🚀 Server running on http://${host}:${port}`);
 });
 
-// Increase timeouts to prevent health check failures during cold starts
-server.keepAliveTimeout = 120000;   // 2 minutes
-server.headersTimeout = 120000;     // 2 minutes
+server.keepAliveTimeout = 120000;
+server.headersTimeout = 120000;
