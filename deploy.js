@@ -2,13 +2,13 @@ import fetch from 'node-fetch';
 import FormData from 'form-data';
 import fs from 'fs';
 import path from 'path';
+import { createHash } from 'crypto';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
 const { CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_API_TOKEN } = process.env;
 
-// Debug: log first few characters (safe for logs)
 console.log('🔍 DEBUG: CLOUDFLARE_ACCOUNT_ID =', CLOUDFLARE_ACCOUNT_ID);
 console.log('🔍 DEBUG: CLOUDFLARE_API_TOKEN prefix =', CLOUDFLARE_API_TOKEN ? CLOUDFLARE_API_TOKEN.substring(0,15) : 'MISSING');
 
@@ -21,14 +21,11 @@ if (!CLOUDFLARE_ACCOUNT_ID || !CLOUDFLARE_API_TOKEN) {
  */
 async function ensureProject(projectName) {
   const url = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects`;
-  console.log(`🔍 Ensuring project: ${projectName}, URL: ${url}`);
-  
   const listRes = await fetch(url, {
     headers: { Authorization: `Bearer ${CLOUDFLARE_API_TOKEN}` },
   });
   const listData = await listRes.json();
   if (!listData.success) {
-    console.error('❌ Failed to list projects:', listData.errors);
     throw new Error(`Failed to list projects: ${JSON.stringify(listData.errors)}`);
   }
 
@@ -56,44 +53,53 @@ async function ensureProject(projectName) {
 }
 
 /**
- * Recursively collect all files from a directory as a Map (relative path -> file content)
+ * Recursively collect all files from a directory, returning both the file map and a manifest.
  */
-async function collectFiles(dirPath, baseDir = dirPath) {
-  const files = new Map();
+async function collectFilesWithManifest(dirPath, baseDir = dirPath) {
+  const files = new Map(); // relative path -> Buffer
+  const manifest = {};     // relative path -> { size, hash? } (hash is optional but recommended)
+
   const entries = await fs.promises.readdir(dirPath, { withFileTypes: true });
   for (const entry of entries) {
     const fullPath = path.join(dirPath, entry.name);
     const relativePath = path.relative(baseDir, fullPath);
     if (entry.isDirectory()) {
-      const subFiles = await collectFiles(fullPath, baseDir);
-      for (const [subPath, content] of subFiles.entries()) {
+      const sub = await collectFilesWithManifest(fullPath, baseDir);
+      for (const [subPath, content] of sub.files.entries()) {
         files.set(subPath, content);
       }
+      Object.assign(manifest, sub.manifest);
     } else {
       const content = await fs.promises.readFile(fullPath);
       files.set(relativePath, content);
+      // Compute SHA256 hash (required by Cloudflare)
+      const hash = createHash('sha256').update(content).digest('hex');
+      manifest[relativePath] = {
+        size: content.length,
+        hash: hash,
+      };
     }
   }
-  return files;
+  return { files, manifest };
 }
 
 /**
  * Deploy a folder to Cloudflare Pages.
- * @param {string} projectName - Unique project name (e.g., "my-user-app")
- * @param {string} buildFolder - Absolute path to the built static site
- * @returns {Promise<{url: string, deploymentId: string}>}
  */
 export async function deployToCloudflarePages(projectName, buildFolder) {
   console.log(`🚀 Starting deployment for ${projectName} from ${buildFolder}`);
   await ensureProject(projectName);
 
-  console.log('📦 Collecting files...');
-  const files = await collectFiles(buildFolder);
+  console.log('📦 Collecting files and generating manifest...');
+  const { files, manifest } = await collectFilesWithManifest(buildFolder);
   console.log(`📁 Found ${files.size} files`);
 
   const form = new FormData();
+  // Add the manifest as a JSON string field
+  form.append('manifest', JSON.stringify(manifest), { contentType: 'application/json' });
+  // Add each file
   for (const [relativePath, content] of files.entries()) {
-    form.append(relativePath, content, relativePath);
+    form.append(relativePath, content, { filename: relativePath });
   }
 
   const deployUrl = `https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/pages/projects/${projectName}/deployments`;
