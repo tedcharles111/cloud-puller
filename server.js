@@ -1,12 +1,10 @@
 import express from 'express';
 import multer from 'multer';
-import pkg from 'extract-zip';
+import extract from 'extract-zip';   // default import
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
 import { deployToCloudflarePages } from './deploy.js';
-
-const { extract } = pkg;  // Correct way for CommonJS module
 
 dotenv.config();
 
@@ -46,7 +44,9 @@ app.post('/deploy', upload.single('file'), async (req, res) => {
     const zipPath = path.join(tempDir, 'site.zip');
     fs.writeFileSync(zipPath, file.buffer);
 
+    // extract is a default function
     await extract(zipPath, { dir: tempDir });
+
     const result = await deployToCloudflarePages(projectName, tempDir);
 
     fs.rmSync(tempDir, { recursive: true, force: true });
