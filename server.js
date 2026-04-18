@@ -1,6 +1,6 @@
 import express from 'express';
 import multer from 'multer';
-import extract from 'extract-zip';   // default import
+import AdmZip from 'adm-zip';
 import fs from 'fs';
 import path from 'path';
 import dotenv from 'dotenv';
@@ -18,34 +18,22 @@ app.use(express.json());
 
 app.get('/health', (req, res) => res.status(200).send('OK'));
 
-app.get('/debug/env', (req, res) => {
-  res.json({
-    hasAccountId: !!process.env.CLOUDFLARE_ACCOUNT_ID,
-    accountIdPrefix: process.env.CLOUDFLARE_ACCOUNT_ID?.substring(0,10) || null,
-    hasToken: !!process.env.CLOUDFLARE_API_TOKEN,
-    tokenPrefix: process.env.CLOUDFLARE_API_TOKEN?.substring(0,15) || null,
-  });
-});
-
 app.post('/deploy', upload.single('file'), async (req, res) => {
   try {
     const { projectName } = req.body;
     const file = req.file;
 
-    if (!projectName) {
-      return res.status(400).json({ error: 'projectName is required' });
-    }
-    if (!file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
+    if (!projectName) return res.status(400).json({ error: 'projectName required' });
+    if (!file) return res.status(400).json({ error: 'No file uploaded' });
 
     const tempDir = path.join('/tmp', `cloudflare-${Date.now()}`);
     fs.mkdirSync(tempDir, { recursive: true });
     const zipPath = path.join(tempDir, 'site.zip');
     fs.writeFileSync(zipPath, file.buffer);
 
-    // extract is a default function
-    await extract(zipPath, { dir: tempDir });
+    // Extract using adm-zip
+    const zip = new AdmZip(zipPath);
+    zip.extractAllTo(tempDir, true);
 
     const result = await deployToCloudflarePages(projectName, tempDir);
 
@@ -58,15 +46,9 @@ app.post('/deploy', upload.single('file'), async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.send(`
-    <h1>Cloudflare Pages Deployment Service</h1>
-    <p>Upload a zip file via POST /deploy with multipart/form-data.</p>
-    <pre>curl -X POST https://cloud-puller.onrender.com/deploy -F "projectName=my-app" -F "file=@site.zip"</pre>
-  `);
+  res.send(`<h1>Cloudflare Deploy Service</h1><pre>curl -X POST https://cloud-puller.onrender.com/deploy -F "projectName=my-app" -F "file=@site.zip"</pre>`);
 });
 
-const server = app.listen(port, host, () => {
-  console.log(`🚀 Server running on http://${host}:${port}`);
-});
+const server = app.listen(port, host, () => console.log(`🚀 Running on ${host}:${port}`));
 server.keepAliveTimeout = 120000;
 server.headersTimeout = 120000;
